@@ -9,6 +9,24 @@ import google.generativeai as genai
 import os
 import re
 
+import nltk
+
+# --- ADD THIS BLOCK START ---
+def setup_nltk():
+    """Force download NLTK data at startup"""
+    print("Downloading required NLTK data...")
+    try:
+        # Download strictly required packages for TextBlob
+        required_corpora = ['brown', 'punkt', 'wordnet', 'averaged_perceptron_tagger']
+        for corpus in required_corpora:
+            nltk.download(corpus)
+        print("NLTK data downloaded successfully.")
+    except Exception as e:
+        print(f"Error downloading NLTK data: {e}")
+
+setup_nltk()
+# --- ADD THIS BLOCK END ---
+
 app = Flask(__name__)
 CORS(app)
 
@@ -436,3 +454,4 @@ if __name__ == '__main__':
     print("Endpoint: POST /api/recommend")
     print("Health Check: GET /api/health")
     app.run(debug=True, port=5001, host='0.0.0.0')
+
