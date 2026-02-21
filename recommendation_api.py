@@ -32,7 +32,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Configure Gemini API
-GEMINI_API_KEY = "AIzaSyB8ib6rvFRr9tU0FpNtYLcyVNCG7_-iT4M"
+GEMINI_API_KEY = os.getenv('MY_API_KEY')
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Configuration
@@ -559,4 +559,5 @@ if __name__ == '__main__':
     print("Multi-Language Support: Enabled")
     print(f"Features loaded: {len(VALID_FEATURES)}")
     app.run(port=5001, host="localhost")
+
 
