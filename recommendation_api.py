@@ -8,7 +8,26 @@ from collections import defaultdict
 import google.generativeai as genai
 import os
 import re
+import os
+import nltk
 
+
+# Set a local path for NLTK data within your project folder
+nltk_data_path = os.path.join(os.getcwd(), 'nltk_data')
+if not os.path.exists(nltk_data_path):
+    os.makedirs(nltk_data_path)
+
+# Tell NLTK to look here
+nltk.data.path.append(nltk_data_path)
+
+# Download the specific pieces TextBlob needs to this folder
+try:
+    nltk.data.find('corpora/punkt')
+except LookupError:
+    nltk.download('punkt', download_dir=nltk_data_path)
+    nltk.download('brown', download_dir=nltk_data_path)
+    nltk.download('wordnet', download_dir=nltk_data_path)
+    nltk.download('averaged_perceptron_tagger', download_dir=nltk_data_path)
 app = Flask(__name__)
 CORS(app)
 
@@ -540,3 +559,4 @@ if __name__ == '__main__':
     print("Multi-Language Support: Enabled")
     print(f"Features loaded: {len(VALID_FEATURES)}")
     app.run(port=5001, host="localhost")
+
