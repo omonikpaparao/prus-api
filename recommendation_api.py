@@ -9,30 +9,15 @@ import google.generativeai as genai
 import os
 import re
 
-import nltk
-
-# --- ADD THIS BLOCK START ---
-def setup_nltk():
-    """Force download NLTK data at startup"""
-    print("Downloading required NLTK data...")
-    try:
-        # Download strictly required packages for TextBlob
-        required_corpora = ['brown', 'punkt', 'wordnet', 'averaged_perceptron_tagger']
-        for corpus in required_corpora:
-            nltk.download(corpus)
-        print("NLTK data downloaded successfully.")
-    except Exception as e:
-        print(f"Error downloading NLTK data: {e}")
-
-setup_nltk()
-# --- ADD THIS BLOCK END ---
-
 app = Flask(__name__)
 CORS(app)
 
 # Configure Gemini API
-GEMINI_API_KEY = "AIzaSyBc0Hx7j95RkGJkCJlj3JTW1UE0qUp2tqw"
+GEMINI_API_KEY = "AIzaSyB8ib6rvFRr9tU0FpNtYLcyVNCG7_-iT4M"
 genai.configure(api_key=GEMINI_API_KEY)
+
+# Configuration
+MAX_FEATURES_DISPLAY = 100  # Number of features to show in Gemini prompt
 
 # MongoDB connection
 MONGO_URI = "mongodb+srv://v647414:223344vinay@cluster0.lus5rot.mongodb.net/"
@@ -44,7 +29,7 @@ def load_valid_features():
     """Load all valid features from mobile_features.txt"""
     valid_features = set()
     try:
-        with open('mobile_features.txt', 'r', encoding='utf-8') as f:
+        with open("mobile_features.txt", 'r', encoding='utf-8') as f:
             for line in f:
                 # Extract features from lines like: "['feature1', 'feature2', ...]"
                 match = re.search(r'\[(.*?)\]', line)
@@ -61,20 +46,119 @@ def load_valid_features():
 
 VALID_FEATURES = load_valid_features()
 
+def translate_to_english_fallback(user_query):
+    """
+    Fallback translation using simple dictionary mapping for common phrases.
+    This works when Gemini API is not available.
+    """
+    # Common translations for mobile phone features
+    translation_dict = {
+        # Spanish
+        'teléfono': 'phone', 'batería': 'battery', 'cámara': 'camera', 'pantalla': 'screen',
+        'rendimiento': 'performance', 'rápido': 'fast', 'buena': 'good', 'excelente': 'excellent',
+        'quiero': 'want', 'necesito': 'need', 'busco': 'looking for',
+        
+        # French
+        'téléphone': 'phone', 'batterie': 'battery', 'appareil photo': 'camera', 'écran': 'screen',
+        'performance': 'performance', 'rapide': 'fast', 'bon': 'good', 'excellent': 'excellent',
+        'veux': 'want', 'besoin': 'need', 'cherche': 'looking for',
+        
+        # German
+        'telefon': 'phone', 'batterie': 'battery', 'kamera': 'camera', 'bildschirm': 'screen',
+        'leistung': 'performance', 'schnell': 'fast', 'gut': 'good', 'ausgezeichnet': 'excellent',
+        'möchte': 'want', 'brauche': 'need', 'suche': 'looking for',
+        
+        # Italian
+        'telefono': 'phone', 'batteria': 'battery', 'fotocamera': 'camera', 'schermo': 'screen',
+        'prestazioni': 'performance', 'veloce': 'fast', 'buono': 'good', 'eccellente': 'excellent',
+        'voglio': 'want', 'ho bisogno': 'need', 'cerco': 'looking for',
+        
+        # Portuguese
+        'telefone': 'phone', 'bateria': 'battery', 'câmera': 'camera', 'tela': 'screen',
+        'desempenho': 'performance', 'rápido': 'fast', 'bom': 'good', 'excelente': 'excellent',
+        'quero': 'want', 'preciso': 'need', 'procuro': 'looking for',
+        
+        # Common feature words that are similar across languages
+        'zoom': 'zoom', 'design': 'design', 'premium': 'premium', 'titanium': 'titanium',
+        'android': 'android', 'ios': 'ios', 'gaming': 'gaming', 'video': 'video'
+    }
+    
+    # Convert to lowercase for matching
+    query_lower = user_query.lower()
+    translated_query = query_lower
+    
+    # Replace known translations
+    for foreign_word, english_word in translation_dict.items():
+        translated_query = translated_query.replace(foreign_word, english_word)
+    
+    print(f"Fallback translation: '{user_query}' → '{translated_query}'")
+    return translated_query
+
+def translate_to_english(user_query):
+    """
+    Translate user query to English using Gemini API if it's in another language.
+    Falls back to dictionary-based translation if API fails.
+    """
+    try:
+        # First, detect if the query is in English
+        detection_prompt = f"""Analyze this text and determine if it's written in English or another language.
+
+Text: "{user_query}"
+
+If the text is in English, respond with: "ENGLISH"
+If the text is in another language, respond with: "OTHER_LANGUAGE"
+
+Your response:"""
+
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        detection_response = model.generate_content(detection_prompt)
+        detection_result = detection_response.text.strip().upper()
+        
+        print(f"Language detection: {detection_result}")
+        
+        if detection_result == "ENGLISH":
+            print("Query is already in English")
+            return user_query
+        
+        # If not English, translate to English
+        translation_prompt = f"""Translate the following text to English. Focus on preserving the meaning related to product features and specifications.
+
+Original text: "{user_query}"
+
+Provide only the English translation without any additional text or explanations:"""
+
+        translation_response = model.generate_content(translation_prompt)
+        translated_query = translation_response.text.strip()
+        
+        print(f"Original query: {user_query}")
+        print(f"Translated query: {translated_query}")
+        
+        return translated_query
+        
+    except Exception as e:
+        print(f"Error with Gemini translation: {e}")
+        print("Falling back to dictionary-based translation...")
+        # Fallback to dictionary-based translation
+        return translate_to_english_fallback(user_query)
+
 def extract_features_with_gemini(user_query):
     """
     Use Gemini API to extract valid features from user query.
+    First translates to English if needed, then extracts features.
     Only returns features that exist in mobile_features.txt
     """
     try:
-        # Create prompt for Gemini
-        features_list = ', '.join(sorted(VALID_FEATURES)[:100])  # Show sample of features
+        # Step 1: Translate to English if needed
+        english_query = translate_to_english(user_query)
+        
+        # Step 2: Extract features from English query
+        features_list = ', '.join(sorted(VALID_FEATURES)[:MAX_FEATURES_DISPLAY])  # Show sample of features
         
         prompt = f"""You are a feature extraction assistant for a mobile phone recommendation system.
 
 Valid features from our database include: {features_list}... and more.
 
-User query: "{user_query}"
+User query: "{english_query}"
 
 Task: Extract ONLY the features from the user query that match or are closely related to features in our database. Return them as a comma-separated list.
 
@@ -453,5 +537,6 @@ if __name__ == '__main__':
     print("Starting PRUS Recommendation API...")
     print("Endpoint: POST /api/recommend")
     print("Health Check: GET /api/health")
-    app.run(debug=True, port=5001, host='0.0.0.0')
-
+    print("Multi-Language Support: Enabled")
+    print(f"Features loaded: {len(VALID_FEATURES)}")
+    app.run(port=5001, host="localhost")
